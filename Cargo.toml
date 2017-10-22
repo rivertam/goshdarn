@@ -1,0 +1,8 @@
+[package]
+name = "goddamn"
+version = "0.1.0"
+authors = ["Ben Berman <ben.m.berman@gmail.com>"]
+
+[dependencies]
+cursive = "*"
+git2 = "0.6"
