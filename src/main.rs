@@ -9,18 +9,73 @@ use cursive::views::{Checkbox, Dialog, EditView, LinearLayout, ListView,
 use git2::Repository;
 
 fn main() {
-    let repo = Repository::open(std::path::Path::new(".")).unwrap();
-    let head = repo.head().unwrap();
-    let name = head.name().unwrap();
-    println!("{} name", name);
+    get_diffs();
+}
 
-    let diff = repo.diff_tree_to_workdir_with_index(None, None).unwrap();
-    diff.print(git2::DiffFormat::Raw, |diff_delta, maybe_hunk, diff_line| {
-        let num_files = diff_delta.nfiles();
-        let hunk_start = maybe_hunk.unwrap().old_start();
-        println!("files: {}, {}", num_files, hunk_start);
-        return true;
-    }).unwrap();
+fn get_diffs<'a>() -> &'a std::collections::HashMap<
+                        String,
+                        (&'a mut std::vec::Vec<String>, &'a mut std::vec::Vec<String>)
+                    > {
+    let repo = Repository::open(std::path::Path::new(".")).unwrap();
+
+    let diff = repo.diff_index_to_workdir(None, None).unwrap();
+
+    let mut file_diffs:
+        std::collections::HashMap<
+            String,
+            (&'a mut std::vec::Vec<String>, &'a mut std::vec::Vec<String>)
+        > = std::collections::HashMap::new();
+
+    diff.foreach(
+        &mut |_, _| { true },
+        None,
+        None,
+        Some(&mut |diff_delta, _maybe_hunk, diff_line| {
+            let mut old_line = 0;
+            let mut new_line = 0;
+
+            match diff_line.old_lineno() {
+                Some(old_no) => old_line = old_no,
+                None => {},
+            };
+            match diff_line.new_lineno() {
+                Some(new_no) => new_line = new_no,
+                None => {},
+            };
+
+            let content_vec = diff_line.content().to_vec();
+            let content = String::from_utf8(content_vec).unwrap();
+            let trimmed_content = content.trim();
+
+            let file_name = match diff_line.origin() {
+                '+' => {
+                    let path = diff_delta.new_file().path().unwrap();
+                    String::from(path.to_str().unwrap())
+                },
+                '-' => {
+                    let path = diff_delta.old_file().path().unwrap();
+                    String::from(path.to_str().unwrap())
+                },
+                _  => String::from("???"),
+            };
+
+            if !file_diffs.contains_key(&file_name) {
+                file_diffs.insert(file_name.clone(), (&mut vec![], &mut vec![]));
+            }
+
+            match diff_line.origin() {
+                '+' => {
+                    (file_diffs[&file_name].1).push(String::from(trimmed_content));
+                },
+                '-' => {
+                },
+                _ => {},
+            }
+
+            true
+        })).unwrap();
+
+    &mut file_diffs
 }
 
 fn show_ui() {
