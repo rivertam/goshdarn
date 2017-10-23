@@ -9,22 +9,55 @@ use cursive::views::{Checkbox, Dialog, EditView, LinearLayout, ListView,
 use git2::Repository;
 
 fn main() {
-    get_diffs();
+    let diffs = get_diffs();
+    for diff in diffs {
+        println!("Diff for {}", diff.file_name);
+        for old in diff.old {
+            println!("- {}: {}", old.line_number, old.content);
+        }
+
+        for new in diff.new {
+            println!("+ {}: {}", new.line_number, new.content);
+        }
+    }
 }
 
-fn get_diffs<'a>() -> &'a std::collections::HashMap<
-                        String,
-                        (&'a mut std::vec::Vec<String>, &'a mut std::vec::Vec<String>)
-                    > {
+struct Line {
+    line_number: u32,
+    content: String,
+}
+
+impl Clone for Line {
+    fn clone(&self) -> Line {
+        Line {
+            line_number: self.line_number,
+            content: self.content.clone(),
+        }
+    }
+}
+
+struct Diff {
+    file_name: String,
+    old: std::vec::Vec<Line>,
+    new: std::vec::Vec<Line>,
+}
+
+impl Clone for Diff {
+    fn clone(&self) -> Diff {
+        Diff {
+            file_name: self.file_name.clone(),
+            old: self.old.clone(),
+            new: self.new.clone(),
+        }
+    }
+}
+
+fn get_diffs() -> std::vec::Vec<Diff> {
     let repo = Repository::open(std::path::Path::new(".")).unwrap();
 
     let diff = repo.diff_index_to_workdir(None, None).unwrap();
 
-    let mut file_diffs:
-        std::collections::HashMap<
-            String,
-            (&'a mut std::vec::Vec<String>, &'a mut std::vec::Vec<String>)
-        > = std::collections::HashMap::new();
+    let mut diffs: std::collections::HashMap<String, Diff> = std::collections::HashMap::new();
 
     diff.foreach(
         &mut |_, _| { true },
@@ -44,8 +77,8 @@ fn get_diffs<'a>() -> &'a std::collections::HashMap<
             };
 
             let content_vec = diff_line.content().to_vec();
-            let content = String::from_utf8(content_vec).unwrap();
-            let trimmed_content = content.trim();
+            let content = String::from_utf8(content_vec).unwrap().to_owned();
+            let trimmed_content = content.trim().to_string();
 
             let file_name = match diff_line.origin() {
                 '+' => {
@@ -56,18 +89,16 @@ fn get_diffs<'a>() -> &'a std::collections::HashMap<
                     let path = diff_delta.old_file().path().unwrap();
                     String::from(path.to_str().unwrap())
                 },
-                _  => String::from("???"),
+                _  => { return true; },
             };
 
-            if !file_diffs.contains_key(&file_name) {
-                file_diffs.insert(file_name.clone(), (&mut vec![], &mut vec![]));
-            }
-
+            let d = diffs.entry(file_name.clone()).or_insert(Diff { file_name: file_name.clone(), new: vec![], old: vec![] });
             match diff_line.origin() {
                 '+' => {
-                    (file_diffs[&file_name].1).push(String::from(trimmed_content));
+                    d.new.push(Line { line_number: new_line, content: trimmed_content });
                 },
                 '-' => {
+                    d.old.push(Line { line_number: old_line, content: trimmed_content });
                 },
                 _ => {},
             }
@@ -75,7 +106,11 @@ fn get_diffs<'a>() -> &'a std::collections::HashMap<
             true
         })).unwrap();
 
-    &mut file_diffs
+    diffs.iter().map(|(_, diff)| Diff {
+        file_name: diff.file_name.clone(),
+        old: diff.old.clone(),
+        new: diff.new.clone(),
+    }).collect()
 }
 
 fn show_ui() {
