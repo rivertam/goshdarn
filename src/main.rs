@@ -7,9 +7,50 @@ use std::io;
 use termion::event;
 use termion::input::TermRead;
 
-fn main() {
-    let diffs = get_diffs();
+enum ControllingSection {
+    Text,
+    File,
+}
 
+struct State {
+    controlling_section: ControllingSection,
+    file_index: usize,
+    diffs: std::vec::Vec<Diff>,
+}
+
+impl State {
+    fn switch_focus(&mut self) {
+        self.controlling_section = match self.controlling_section {
+            ControllingSection::Text => ControllingSection::File,
+            ControllingSection::File => ControllingSection::Text,
+        }
+    }
+
+    fn up(&mut self) {
+        match self.controlling_section {
+            ControllingSection::File => {
+                self.file_index =
+                    if self.file_index == 0 {
+                        self.diffs.len() - 1
+                    } else {
+                        self.file_index - 1
+                    };
+            },
+            _ => {}
+        }
+    }
+
+    fn down(&mut self) {
+        match self.controlling_section {
+            ControllingSection::File => {
+                self.file_index = (self.file_index + 1) % self.diffs.len()
+            },
+            _ => {}
+        }
+    }
+}
+
+fn main() {
     let stdin = io::stdin();
 
     let backend = tui::backend::TermionBackend::new().unwrap();
@@ -17,9 +58,14 @@ fn main() {
     terminal.clear().unwrap();
     terminal.hide_cursor().unwrap();
 
-    draw(&mut terminal, &diffs);
+    let mut state = State {
+        controlling_section: ControllingSection::File,
+        file_index: 0,
+        diffs: get_diffs(),
+    };
 
     let mut term_size = terminal.size().unwrap();
+    draw(&mut terminal, &state);
     for c in stdin.keys() {
         let size = terminal.size().unwrap();
         if term_size != size {
@@ -27,11 +73,15 @@ fn main() {
             term_size = size;
         }
 
-        draw(&mut terminal, &diffs);
         let evt = c.unwrap();
-        if evt == event::Key::Char('q') {
-            break;
+        match evt {
+            event::Key::Char('\t') => { state.switch_focus(); }
+            event::Key::Char('q') => { break; }
+            event::Key::Up | event::Key::Char('k') => { state.up() }
+            event::Key::Down | event::Key::Char('j') => { state.down() }
+            _ => {}
         }
+        draw(&mut terminal, &state);
     }
 
     terminal.show_cursor().unwrap();
@@ -128,9 +178,10 @@ fn get_diffs() -> std::vec::Vec<Diff> {
     }).collect()
 }
 
-fn draw(t: &mut tui::Terminal<tui::backend::TermionBackend>, diffs: &std::vec::Vec<Diff>) {
+fn draw(t: &mut tui::Terminal<tui::backend::TermionBackend>, state: &State) {
     use tui::widgets::*;
     use tui::layout::*;
+    use tui::style::*;
 
     let size = t.size().unwrap();
 
@@ -144,25 +195,44 @@ fn draw(t: &mut tui::Terminal<tui::backend::TermionBackend>, diffs: &std::vec::V
                 .margin(1)
                 .sizes(&[Size::Percent(50), Size::Percent(50)])
                 .render(t, &chunks[0], |t, chunks| {
+                    let border_style =
+                        match state.controlling_section {
+                            ControllingSection::Text =>
+                                Style::default().fg(Color::Cyan),
+                            _ =>
+                                Style::default().fg(Color::Gray),
+
+                        };
+
                     Block::default()
-                        .title("Block")
+                        .title("Old")
+                        .border_style(border_style)
                         .borders(border::ALL)
                         .render(t, &chunks[0]);
                     Block::default()
-                        .title("Block")
+                        .title("New")
+                        .border_style(border_style)
                         .borders(border::ALL)
                         .render(t, &chunks[1]);
 
                 });
 
+            let diffs = &state.diffs;
             let filenames = diffs.into_iter().map(|diff: &Diff| diff.file_name.clone()).collect::<std::vec::Vec<String>>();
+
+            let border_style =
+                match state.controlling_section {
+                    ControllingSection::File => Style::default().fg(Color::Cyan),
+                    _ => Style::default().fg(Color::Gray),
+                };
 
             SelectableList::default()
                 .block(Block::default()
+                   .border_style(border_style)
                    .borders(border::ALL)
                    .title("Files"))
                 .items(&filenames)
-                .select(0)
+                .select(state.file_index)
                 .highlight_symbol(">")
                 .render(t, &chunks[1]);
         });
