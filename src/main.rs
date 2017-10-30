@@ -33,6 +33,8 @@ fn main() {
             break;
         }
     }
+
+    terminal.show_cursor().unwrap();
 }
 
 struct Line {
@@ -153,9 +155,15 @@ fn draw(t: &mut tui::Terminal<tui::backend::TermionBackend>, diffs: &std::vec::V
 
                 });
 
-            Block::default()
-                .title("Files")
-                .borders(border::ALL)
+            let filenames = diffs.into_iter().map(|diff: &Diff| diff.file_name.clone()).collect::<std::vec::Vec<String>>();
+
+            SelectableList::default()
+                .block(Block::default()
+                   .borders(border::ALL)
+                   .title("Files"))
+                .items(&filenames)
+                .select(0)
+                .highlight_symbol(">")
                 .render(t, &chunks[1]);
         });
 
