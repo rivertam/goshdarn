@@ -1,23 +1,36 @@
-extern crate cursive;
+extern crate tui;
+extern crate termion;
 extern crate git2;
 
-use cursive::Cursive;
-use cursive::traits::*;
-use cursive::views::{Checkbox, Dialog, EditView, LinearLayout, ListView,
-                     SelectView, TextView};
-
 use git2::Repository;
+use std::io;
+use termion::event;
+use termion::input::TermRead;
 
 fn main() {
     let diffs = get_diffs();
-    for diff in diffs {
-        println!("Diff for {}", diff.file_name);
-        for old in diff.old {
-            println!("- {}: {}", old.line_number, old.content);
+
+    let stdin = io::stdin();
+
+    let backend = tui::backend::TermionBackend::new().unwrap();
+    let mut terminal = tui::Terminal::new(backend).unwrap();
+    terminal.clear().unwrap();
+    terminal.hide_cursor().unwrap();
+
+    draw(&mut terminal, &diffs);
+
+    let mut term_size = terminal.size().unwrap();
+    for c in stdin.keys() {
+        let size = terminal.size().unwrap();
+        if term_size != size {
+            terminal.resize(size).unwrap();
+            term_size = size;
         }
 
-        for new in diff.new {
-            println!("+ {}: {}", new.line_number, new.content);
+        draw(&mut terminal, &diffs);
+        let evt = c.unwrap();
+        if evt == event::Key::Char('q') {
+            break;
         }
     }
 }
@@ -113,64 +126,39 @@ fn get_diffs() -> std::vec::Vec<Diff> {
     }).collect()
 }
 
-fn show_ui() {
-    let mut siv = Cursive::new();
+fn draw(t: &mut tui::Terminal<tui::backend::TermionBackend>, diffs: &std::vec::Vec<Diff>) {
+    use tui::widgets::*;
+    use tui::layout::*;
 
-    siv.add_layer(
-        Dialog::new()
-            .title("Please fill out this form")
-            .button("Ok", |s| s.quit())
-            .content(
-                ListView::new()
-                    .child("Name", EditView::new().fixed_width(10))
-                    .child(
-                        "Receive spam?",
-                        Checkbox::new().on_change(
-                            |s, checked| for name in &["email1", "email2"] {
-                                s.call_on_id(name, |view: &mut EditView| {
-                                    view.set_enabled(checked)
-                                });
-                                if checked {
-                                    s.focus_id("email1").unwrap();
-                                }
-                            },
-                        ),
-                    )
-                    .child(
-                        "Email",
-                        LinearLayout::horizontal()
-                            .child(
-                                EditView::new()
-                                    .disabled()
-                                    .with_id("email1")
-                                    .fixed_width(15),
-                            )
-                            .child(TextView::new("@"))
-                            .child(
-                                EditView::new()
-                                    .disabled()
-                                    .with_id("email2")
-                                    .fixed_width(10),
-                            ),
-                    )
-                    .delimiter()
-                    .child(
-                        "Age",
-                        SelectView::new()
-                            .popup()
-                            .item_str("0-18")
-                            .item_str("19-30")
-                            .item_str("31-40")
-                            .item_str("41+"),
-                    )
-                    .with(|list| for i in 0..50 {
-                        list.add_child(
-                                &format!("Item {}", i),
-                                EditView::new(),
-                            );
-                    }),
-            ),
-    );
+    let size = t.size().unwrap();
 
-    siv.run();
+    Group::default()
+        .direction(Direction::Vertical)
+        .margin(1)
+        .sizes(&[Size::Percent(90), Size::Percent(10)])
+        .render(t, &size, |t, chunks| {
+            Group::default()
+                .direction(Direction::Horizontal)
+                .margin(1)
+                .sizes(&[Size::Percent(50), Size::Percent(50)])
+                .render(t, &chunks[0], |t, chunks| {
+                    Block::default()
+                        .title("Block")
+                        .borders(border::ALL)
+                        .render(t, &chunks[0]);
+                    Block::default()
+                        .title("Block")
+                        .borders(border::ALL)
+                        .render(t, &chunks[1]);
+
+                });
+
+            Block::default()
+                .title("Files")
+                .borders(border::ALL)
+                .render(t, &chunks[1]);
+        });
+
+
+    t.draw().unwrap();
 }

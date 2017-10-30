@@ -4,5 +4,6 @@ version = "0.1.0"
 authors = ["Ben Berman <ben.m.berman@gmail.com>"]
 
 [dependencies]
-cursive = "*"
 git2 = "0.6"
+termion = "1.4"
+tui = "0.1"
