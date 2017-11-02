@@ -85,6 +85,7 @@ fn main() {
     }
 
     terminal.show_cursor().unwrap();
+    terminal.clear().unwrap();
 }
 
 struct Line {
@@ -193,6 +194,7 @@ fn draw(t: &mut tui::Terminal<tui::backend::TermionBackend>, state: &State) {
             Group::default()
                 .direction(Direction::Horizontal)
                 .margin(1)
+                :qa
                 .sizes(&[Size::Percent(50), Size::Percent(50)])
                 .render(t, &chunks[0], |t, chunks| {
                     let border_style =
